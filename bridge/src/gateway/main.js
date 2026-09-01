@@ -10,7 +10,7 @@ import { createInteractionQueue } from "./interaction-queue.js"
 import { createGatewayServer } from "./gateway-server.js"
 
 export function buildGateway(options) {
-  const engine = createEngine(options.engine, options.engineOptions ?? {})
+  const engine = options.engineInstance ?? createEngine(options.engine, options.engineOptions ?? {})
   const eventBus = createEventBus()
   const registry = createSessionRegistry()
   const interactionQueue = createInteractionQueue()
@@ -22,6 +22,10 @@ export function buildGateway(options) {
     askQuestion: (record) => askQuestion(record),
     askPermission: (record) => askPermission(record)
   })
+  // Engine-emitted spec events (session.status/idle/error, message.part.updated, question/permission
+  // asked) ride the SSE bus next to the bus's own server.connected/heartbeat frames: /event
+  // forwards the engine's normalized events.
+  engine.subscribe((event) => eventBus.emit(event))
   return { server, engine, eventBus, registry, interactionQueue }
 }
 

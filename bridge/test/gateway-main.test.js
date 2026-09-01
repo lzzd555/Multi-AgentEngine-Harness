@@ -6,6 +6,7 @@ import { tmpdir } from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { buildGateway, isDirectExecution } from "../src/gateway/main.js"
+import { createFakeEngine } from "./helpers/fake-engine.js"
 
 test("buildGateway wires engine events into the SSE bus", async () => {
   const gateway = buildGateway({
@@ -21,6 +22,17 @@ test("buildGateway wires engine events into the SSE bus", async () => {
   assert.equal(typeof gateway.server.listen, "function")
   gateway.eventBus.emit({ type: "session.idle", properties: { sessionID: "s" } })
   assert.equal(seen.at(-1).type, "session.idle")
+})
+
+test("buildGateway forwards engine events onto the SSE bus and accepts a pre-built engine", () => {
+  const engine = createFakeEngine()
+  const gateway = buildGateway({ engine: "opencode", engineInstance: engine, defaultModel: "zai/glm-5.2" })
+  assert.equal(gateway.engine, engine, "engineInstance is used instead of the factory path")
+  const seen = []
+  gateway.eventBus.subscribe((event) => seen.push(event))
+  const partEvent = { type: "message.part.updated", properties: { sessionID: "s1", messageID: "m1", part: { type: "text", content: "hi" } } }
+  engine.emit(partEvent)
+  assert.deepEqual(seen.at(-1), partEvent)
 })
 
 test("isDirectExecution matches symlinked bins and rejects everything else", () => {
