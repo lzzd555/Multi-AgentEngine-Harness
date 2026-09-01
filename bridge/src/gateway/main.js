@@ -36,6 +36,11 @@ export async function main(argv = process.argv.slice(2)) {
     return
   }
   const gateway = buildGateway(options)
+  // A busy port (EADDRINUSE) would otherwise crash with a raw stack; exit 1 with one clean line.
+  gateway.server.once("error", (error) => {
+    process.stderr.write(`gateway failed to start on ${options.host}:${options.port}: ${error.message}\n`)
+    process.exit(1)
+  })
   await gateway.engine.initialize()
   await new Promise((resolve) => gateway.server.listen(options.port, options.host, resolve))
   process.stderr.write(`gateway listening on http://${options.host}:${options.port} engine=${options.engine}\n`)

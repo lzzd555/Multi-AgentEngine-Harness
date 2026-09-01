@@ -70,6 +70,17 @@ export function createOpenCodeEngine({
     return text ? JSON.parse(text) : undefined
   }
 
+  // The spec requires the list endpoints to answer 200 with an array; a real upstream may 404 with
+  // a text body or return non-JSON, which must degrade to [] instead of surfacing a 500.
+  async function listJSONOrEmpty(path) {
+    try {
+      const value = await requestJSON(path)
+      return Array.isArray(value) ? value : []
+    } catch {
+      return []
+    }
+  }
+
   async function waitUntilIdle(sessionID) {
     const deadline = Date.now() + promptTimeoutMs
     while (Date.now() < deadline) {
@@ -187,7 +198,7 @@ export function createOpenCodeEngine({
     },
 
     async listQuestions() {
-      return (await requestJSON("/question")) ?? []
+      return listJSONOrEmpty("/question")
     },
 
     async replyQuestion(requestID, answers) {
@@ -198,7 +209,7 @@ export function createOpenCodeEngine({
     },
 
     async listPermissions() {
-      return (await requestJSON("/permission")) ?? []
+      return listJSONOrEmpty("/permission")
     },
 
     async replyPermission(requestID, { reply, message } = {}) {

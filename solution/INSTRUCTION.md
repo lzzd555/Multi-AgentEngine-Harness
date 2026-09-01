@@ -7,7 +7,7 @@
    - OpenCode：`npm install -g opencode`
    - OMP：`npm install -g oh-my-pi`（提供 `omp` 命令，含 `omp acp` 模式）
    - PI：无需单独安装 `pi`，适配器经 `npx --package=@automatalabs/pi-acp pi-acp` 拉起（首次会下载）
-3. GLM5.2 配置：设置环境变量 `ZAI_API_KEY=<你的key>`（可选 `ZAI_BASE_URL=<自定义地址>`，默认 https://api.z.ai/api/paas/v4）。Windows 下持久生效用 `setx ZAI_API_KEY <key>`（需新开一个终端窗口才对后续进程生效）；仅当前会话生效用 PowerShell 的 `$env:ZAI_API_KEY = "<key>"`（或 cmd 的 `set ZAI_API_KEY=<key>`）；macOS/Linux 用 `export ZAI_API_KEY=<key>`。随后按 `code/solution/config-templates/README.md` 把 provider 配置并入对应引擎。
+3. GLM5.2 配置：设置环境变量 `ZAI_API_KEY=<你的key>`（必填）。默认端点 `https://api.z.ai/api/paas/v4` 已直接写入模板，无需改动；自定义端点时导出 `ZAI_BASE_URL=<自定义地址>` 并按 `code/solution/config-templates/README.md` 第 1 节把配置中 `baseURL` 一行手工改为该值（网关与引擎都不会自动展开该变量）。Windows 下持久生效用 `setx ZAI_API_KEY <key>`（需新开一个终端窗口才对后续进程生效）；仅当前会话生效用 PowerShell 的 `$env:ZAI_API_KEY = "<key>"`（或 cmd 的 `set ZAI_API_KEY=<key>`）；macOS/Linux 用 `export ZAI_API_KEY=<key>`。随后按 `code/solution/config-templates/README.md` 把 provider 配置并入对应引擎。
 4. 依赖安装：无第三方 npm 依赖，无需 `npm install`。
 
 ## 执行方式

@@ -68,6 +68,9 @@ kill %1
 预期：全部 ✓。若 OpenCode 真实上游的 `/event` 不发 `message.part.updated`（伪造假设与真实有出入），
 修 opencode-engine 的事件来源（改为轮询 `/session/{id}/message` diff 出 part 更新）而不是放宽 rehearsal
 检查；修正后补进 `gateway-opencode-engine.test.js` 的 fake 上游行为。
+另需核验真实 opencode 的 `GET /question` / `GET /permission` 应答形态（伪造上游假设返回 JSON 数组）：
+若真实上游 404 或返回非 JSON，网关的容错回退（listQuestions/listPermissions 捕获错误与非 JSON，降级为
+`[]`）会让网关侧仍返回 200-`[]`，演练不受影响。
 PI 若 `npx pi-acp` 拉起失败：记录现象，按风险预案在 `engine-adapter.js` 加 claude/codex case 顶替
 （harness-profiles 已有对应 profile）。
 
@@ -105,8 +108,9 @@ node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217 \
   --query "请输出 hello world 并结束，不要执行任何其他操作"   # 默认模型即 zai/glm-5.2，走通即模板生效
 ```
 
-若某引擎配置键名有出入：修正 `solution/config-templates/` 模板并回填 README（`opencode.glm.json` 中
-`${ZAI_BASE_URL}` 的"网关替换 vs 引擎原生展开"问题以 `opencode models` 实测为准）。
+若某引擎配置键名有出入：修正 `solution/config-templates/` 模板并回填 README。模板 `baseURL` 已直接写死为
+官方端点 `https://api.z.ai/api/paas/v4`（网关与引擎都不做环境变量展开）；自定义端点按 README 第 1 节手工
+改那一行即可，`opencode models` 实测是否出现 `zai/glm-5.2` 仍是模板生效的准绳。
 
 **实测结果（待填）：** 待补。
 

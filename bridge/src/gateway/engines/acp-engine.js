@@ -117,7 +117,7 @@ export function createAcpEngine({
       return
     }
     if (event.type === "message.updated") {
-      void emitPartUpdates(event.sessionId)
+      void emitPartUpdates(event.sessionId).catch(() => {})
     }
   })
 

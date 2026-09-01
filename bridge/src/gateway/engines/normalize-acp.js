@@ -30,7 +30,9 @@ function clip(value) {
 
 /**
  * Step boundary: a tool part after text ends a step, and text after tools ends the tool batch.
- * A trailing step-finish is only appended when the turn is over (the session is not busy).
+ * A trailing step-finish is only appended when the turn is over (the session is not busy), and it
+ * is appended even when no text/tool part preceded it (reasoning/file-only tail), so a completed
+ * message always carries a step-finish.
  */
 function assistantParts(parts, { busy }) {
   const output = []
@@ -47,7 +49,7 @@ function assistantParts(parts, { busy }) {
     }
     // reasoning and file parts are not part of the spec vocabulary
   }
-  if (!busy && previousKind) output.push({ type: "step-finish" })
+  if (!busy) output.push({ type: "step-finish" })
   return output
 }
 

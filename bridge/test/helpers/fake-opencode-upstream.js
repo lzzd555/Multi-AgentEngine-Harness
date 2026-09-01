@@ -18,7 +18,9 @@ export async function createFakeOpencodeUpstream({ streamEvents = false } = {}) 
     messages: new Map(),
     promptResolvers: [],
     directories: [],
-    partEvents: []
+    partEvents: [],
+    // GET paths that answer 404 with a plain-text body (real-upstream shapes the lists must tolerate).
+    textNotFoundPaths: new Set()
   }
   const sseResponses = new Set()
 
@@ -40,6 +42,10 @@ export async function createFakeOpencodeUpstream({ streamEvents = false } = {}) 
       sseResponses.add(response)
       request.on("close", () => sseResponses.delete(response))
       return
+    }
+    if (request.method === "GET" && state.textNotFoundPaths.has(url.pathname)) {
+      response.writeHead(404, { "Content-Type": "text/plain" })
+      return response.end("not found")
     }
     if (request.method === "GET" && url.pathname === "/session/status") {
       return send(Object.fromEntries([...state.sessions.keys()].map((id) => [id, { type: state.busy.has(id) ? "busy" : "idle" }])))

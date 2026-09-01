@@ -42,6 +42,16 @@ test("a busy turn yields finish=tool-calls and no trailing step-finish", () => {
   assert.equal(normalized.length, 1) // no tool result while running
 })
 
+test("a completed reasoning-only turn still yields a trailing step-finish", () => {
+  const normalized = normalizeAcpMessages([
+    assistantMessage([{ type: "reasoning", text: "思考中" }])
+  ])
+  assert.equal(normalized.length, 1)
+  const assistant = normalized[0]
+  assert.equal(assistant.info.finish, "stop")
+  assert.deepEqual(assistant.parts, [{ type: "step-finish" }])
+})
+
 test("status mapping covers the ACP vocabulary", () => {
   assert.equal(acpStatusToSpec("pending"), "running")
   assert.equal(acpStatusToSpec("running"), "running")

@@ -53,3 +53,15 @@ test("question and permission reads are proxied", async () => {
     await engine.dispose()
   })
 })
+
+test("question and permission reads tolerate upstream 404 text bodies", async () => {
+  await withFakeUpstream(async (upstream, port) => {
+    upstream.state.textNotFoundPaths.add("/question")
+    upstream.state.textNotFoundPaths.add("/permission")
+    const engine = createOpenCodeEngine({ manageHost: false, upstreamPort: port })
+    await engine.initialize()
+    assert.deepEqual(await engine.listQuestions(), [])
+    assert.deepEqual(await engine.listPermissions(), [])
+    await engine.dispose()
+  })
+})
