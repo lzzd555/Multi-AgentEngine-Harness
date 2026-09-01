@@ -1,0 +1,16 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "provider": {
+    "zai": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "Z.ai (GLM)",
+      "options": {
+        "baseURL": "${ZAI_BASE_URL}"
+      },
+      "models": {
+        "glm-5.2": { "name": "GLM 5.2" }
+      },
+      "api": { "apiKey": "{env:ZAI_API_KEY}" }
+    }
+  }
+}
