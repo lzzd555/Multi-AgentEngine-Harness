@@ -17,12 +17,16 @@
 // }
 // Engine-unreachable failures reject with an Error carrying code "ENGINE_UNAVAILABLE".
 import { createOpenCodeEngine } from "./opencode-engine.js"
+import { createAcpEngine } from "./acp-engine.js"
 
 export function createEngine(id, options = {}) {
   switch (id) {
     case "opencode":
       return createOpenCodeEngine(options)
+    case "omp":
+    case "pi":
+      return createAcpEngine({ profileId: id, ...options })
     default:
-      throw new Error(`Unknown engine: ${id}. Available: opencode`)
+      throw new Error(`Unknown engine: ${id}. Available: opencode, omp, pi`)
   }
 }
