@@ -32,8 +32,9 @@ test("engine adapters stay inside the engines directory for bridge imports", () 
     const source = readFileSync(path.join(enginesRoot, entry.name), "utf8")
     for (const specifier of [...source.matchAll(/from\s+["']([^"']+)["']/g)].map((match) => match[1])) {
       assert.ok(
-        specifier.startsWith("node:") || specifier.startsWith("./") || specifier === "../../opencode-host.js",
-        `${entry.name} imports "${specifier}" — engines may only import node:, ./ or the documented bridge drivers`
+        specifier.startsWith("node:") || specifier.startsWith("./") || specifier === "../../opencode-host.js" ||
+          (specifier.startsWith("../") && !specifier.startsWith("../../")),
+        `${entry.name} imports "${specifier}" — engines may only import node:, ./, gateway core (../) or the documented bridge drivers`
       )
     }
   }
