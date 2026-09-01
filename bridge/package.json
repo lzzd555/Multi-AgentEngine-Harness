@@ -5,7 +5,8 @@
   "type": "module",
   "bin": {
     "harness-remote-bridge": "./src/cli.js",
-    "harness-remote-daemon": "./src/daemon-bin.js"
+    "harness-remote-daemon": "./src/daemon-bin.js",
+    "harness-gateway": "./src/gateway/main.js"
   },
   "scripts": {
     "start": "node src/cli.js",
