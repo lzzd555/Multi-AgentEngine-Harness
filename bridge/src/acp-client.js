@@ -26,6 +26,7 @@ export class AcpClient extends EventEmitter {
   #spawn
   #permissionMode
   #preferredAuthMethod
+  #permissionHandler
   #child
   #buffer = ""
   #nextID = 1
@@ -37,12 +38,13 @@ export class AcpClient extends EventEmitter {
   #stderr = ""
   #stderrPartial = ""
 
-  constructor({ command = "omp", args = ["acp"], permissionMode = "deny", preferredAuthMethod, spawnProcess = spawn } = {}) {
+  constructor({ command = "omp", args = ["acp"], permissionMode = "deny", preferredAuthMethod, permissionHandler, spawnProcess = spawn } = {}) {
     super()
     this.#command = command
     this.#args = args
     this.#permissionMode = permissionMode
     this.#preferredAuthMethod = preferredAuthMethod
+    this.#permissionHandler = permissionHandler
     this.#spawn = spawnProcess
   }
 
@@ -278,8 +280,10 @@ export class AcpClient extends EventEmitter {
     // timeout, so always reply.
     if (message.id !== undefined && message.method) {
       this.emit("agent-request", message)
-      if (message.method === "session/request_permission") this.#respondPermission(message.id, message.params)
-      else this.#respondUnsupported(message.id, message.method)
+      if (message.method === "session/request_permission") {
+        if (this.#permissionHandler) this.#deferPermission(message.id, message.params)
+        else this.#respondPermission(message.id, message.params)
+      } else this.#respondUnsupported(message.id, message.method)
       return
     }
     if (message.id !== undefined) {
@@ -320,7 +324,34 @@ export class AcpClient extends EventEmitter {
       ? { outcome: "selected", optionId: allowed.optionId }
       : { outcome: "cancelled" }
     this.emit("permission", { optionId: allowed?.optionId })
-    this.#child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, result: { outcome } })}\n`)
+    this.#writeResult(id, { outcome })
+  }
+
+  /**
+   * A gateway-injected handler owns the decision: the request stays parked until the
+   * handler resolves an option (or cancels). The legacy auto-grant path is untouched.
+   * The reply keeps the same `result.outcome` envelope the legacy path writes, because
+   * the adapter parses both replies through one schema.
+   */
+  async #deferPermission(id, params) {
+    let outcome
+    try {
+      const reply = await this.#permissionHandler({
+        sessionId: params?.sessionId,
+        options: Array.isArray(params?.options) ? params.options : []
+      })
+      outcome = typeof reply?.optionId === "string"
+        ? { outcome: "selected", optionId: reply.optionId }
+        : { outcome: "cancelled" }
+    } catch {
+      outcome = { outcome: "cancelled" }
+    }
+    this.#writeResult(id, { outcome })
+  }
+
+  #writeResult(id, result) {
+    if (!this.#child?.stdin.writable) return
+    this.#child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id, result })}\n`)
   }
 
   #respondUnsupported(id, method) {
