@@ -1,7 +1,11 @@
 // bridge/test/gateway-main.test.js
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { buildGateway } from "../src/gateway/main.js"
+import { mkdtempSync, rmSync, symlinkSync } from "node:fs"
+import { tmpdir } from "node:os"
+import path from "node:path"
+import { fileURLToPath } from "node:url"
+import { buildGateway, isDirectExecution } from "../src/gateway/main.js"
 
 test("buildGateway wires engine events into the SSE bus", async () => {
   const gateway = buildGateway({
@@ -13,7 +17,24 @@ test("buildGateway wires engine events into the SSE bus", async () => {
   })
   const seen = []
   gateway.eventBus.subscribe((event) => seen.push(event))
-  gateway.engine === undefined // engine is created lazily by initialize; direct emit test:
+  assert.equal(gateway.engine.id, "opencode")
+  assert.equal(typeof gateway.server.listen, "function")
   gateway.eventBus.emit({ type: "session.idle", properties: { sessionID: "s" } })
   assert.equal(seen.at(-1).type, "session.idle")
+})
+
+test("isDirectExecution matches symlinked bins and rejects everything else", () => {
+  const modulePath = fileURLToPath(new URL("../src/gateway/main.js", import.meta.url))
+  assert.equal(isDirectExecution(modulePath, modulePath), true)
+  assert.equal(isDirectExecution(undefined, modulePath), false)
+  assert.equal(isDirectExecution(fileURLToPath(import.meta.url), modulePath), false) // a different real file
+  const dir = mkdtempSync(path.join(tmpdir(), "gateway-guard-"))
+  try {
+    const linkPath = path.join(dir, "harness-gateway")
+    symlinkSync(modulePath, linkPath)
+    assert.equal(isDirectExecution(linkPath, modulePath), true)
+    assert.equal(isDirectExecution(path.join(dir, "missing"), modulePath), false)
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

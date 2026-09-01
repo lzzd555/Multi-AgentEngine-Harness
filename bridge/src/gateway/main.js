@@ -1,5 +1,7 @@
+#!/usr/bin/env node
 // bridge/src/gateway/main.js
-import { pathToFileURL } from "node:url"
+import { realpathSync } from "node:fs"
+import { fileURLToPath, pathToFileURL } from "node:url"
 import { parseGatewayOptions, gatewayUsage } from "./options.js"
 import { createEngine } from "./engines/engine-adapter.js"
 import { createEventBus } from "./event-bus.js"
@@ -42,8 +44,18 @@ export async function main(argv = process.argv.slice(2)) {
   process.on("SIGTERM", shutdown)
 }
 
-const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href
-if (invokedDirectly) {
+// npm installs bins as symlinks to this file: import.meta.url resolves to the realpath
+// while process.argv[1] keeps the symlink path, so the guard must compare realpaths.
+export function isDirectExecution(argv1, modulePath) {
+  if (!argv1) return false
+  try {
+    return pathToFileURL(realpathSync(argv1)).href === pathToFileURL(realpathSync(modulePath)).href
+  } catch {
+    return false
+  }
+}
+
+if (isDirectExecution(process.argv[1], fileURLToPath(import.meta.url))) {
   main().catch((error) => {
     process.stderr.write(`${error.message}\n`)
     process.exit(1)
