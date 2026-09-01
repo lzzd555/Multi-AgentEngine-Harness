@@ -9,13 +9,14 @@ import { createFakeEngine } from "./helpers/fake-engine.js"
 
 async function startGateway(engineOptions = {}) {
   const engine = createFakeEngine(engineOptions)
-  const server = createGatewayServer({
+  const gateway = createGatewayServer({
     engine,
     eventBus: createEventBus(),
     registry: createSessionRegistry(),
     interactionQueue: createInteractionQueue(),
     defaultModel: "zai/glm-5.2"
   })
+  const server = gateway.server
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve))
   return { engine, server, base: `http://127.0.0.1:${server.address().port}` }
 }

@@ -39,7 +39,7 @@ export function createGatewayServer({
   interactionQueue,
   defaultModel = "zai/glm-5.2"
 }) {
-  return createServer(async (request, response) => {
+  const server = createServer(async (request, response) => {
     try {
       const url = new URL(request.url, "http://gateway")
       const path = url.pathname
@@ -63,6 +63,42 @@ export function createGatewayServer({
         return writeJSON(response, 200, registry.statuses())
       }
 
+      if (method === "GET" && path === "/question") {
+        if (!engine.capabilities.questions) return writeJSON(response, 200, [])
+        return writeJSON(response, 200, await engine.listQuestions())
+      }
+      const questionReply = path.match(/^\/question\/([^/]+)\/reply$/)
+      if (questionReply && method === "POST") {
+        const body = await readBody(request)
+        if (!Array.isArray(body.answers)) return sendError(response, 400, "VALIDATION_ERROR", "answers is required")
+        if (engine.capabilities.questions) await engine.replyQuestion(decodeURIComponent(questionReply[1]), body.answers)
+        else if (!interactionQueue.resolveQuestion(decodeURIComponent(questionReply[1]), body.answers)) {
+          return sendError(response, 404, "NOT_FOUND", "Question not found")
+        }
+        return writeJSON(response, 200, { ok: true })
+      }
+      if (method === "GET" && path === "/permission") {
+        const queued = interactionQueue.listPermissions()
+        if (queued.length || !engine.capabilities.permissions) return writeJSON(response, 200, queued)
+        return writeJSON(response, 200, await engine.listPermissions())
+      }
+      const permissionReply = path.match(/^\/permission\/([^/]+)\/reply$/)
+      if (permissionReply && method === "POST") {
+        const body = await readBody(request)
+        if (!["once", "always", "reject"].includes(body.reply)) {
+          return sendError(response, 400, "VALIDATION_ERROR", "reply must be once, always or reject")
+        }
+        const requestID = decodeURIComponent(permissionReply[1])
+        if (interactionQueue.resolvePermission(requestID, body)) {
+          return writeJSON(response, 200, { ok: true })
+        }
+        if (engine.capabilities.permissions) {
+          await engine.replyPermission(requestID, body)
+          return writeJSON(response, 200, { ok: true })
+        }
+        return sendError(response, 404, "NOT_FOUND", "Permission request not found")
+      }
+
       const sessionMatch = path.match(/^\/session\/([^/]+)(?:\/(message|prompt_async|abort|stop|todo))?$/)
       if (!sessionMatch) return sendError(response, 404, "NOT_FOUND", "Not found")
       const sessionID = decodeURIComponent(sessionMatch[1])
@@ -82,10 +118,8 @@ export function createGatewayServer({
         return writeJSON(response, 200, { ok: true })
       }
 
-      // message / prompt_async / abort / stop are implemented in the next task's continuation
-      // of this router; unknown actions fall through to 404 until then.
       if (action) {
-        const handled = await handleSessionAction({ request, response, url, sessionID, action, engine, registry, eventBus, interactionQueue, defaultModel })
+        const handled = await handleSessionAction({ request, response, sessionID, action, engine, registry, eventBus, defaultModel })
         if (handled) return
       }
       return sendError(response, 404, "NOT_FOUND", "Not found")
@@ -95,8 +129,68 @@ export function createGatewayServer({
       return sendError(response, status, code, message)
     }
   })
+
+  // Engines that surface questions/permissions register them here; the routes above read the queue.
+  function askQuestion(record) {
+    const entry = interactionQueue.addQuestion(record.sessionID, record.questions)
+    eventBus.emit({ type: "question.asked", properties: { sessionID: record.sessionID, id: entry.id, questions: record.questions } })
+    return entry
+  }
+  function askPermission(record) {
+    const entry = interactionQueue.addPermission(record.sessionID, record.permission, record.patterns)
+    eventBus.emit({ type: "permission.asked", properties: { sessionID: record.sessionID, id: entry.id, permission: record.permission, patterns: record.patterns } })
+    return entry
+  }
+  return { server, askQuestion, askPermission }
 }
 
-async function handleSessionAction() {
+async function handleSessionAction({ request, response, sessionID, action, engine, registry, eventBus, defaultModel }) {
+  const method = request.method
+  if (!registry.has(sessionID)) {
+    sendError(response, 404, "NOT_FOUND", "Session not found")
+    return true
+  }
+
+  if (action === "message" && method === "GET") {
+    writeJSON(response, 200, await engine.listMessages(sessionID))
+    return true
+  }
+
+  if (action === "prompt_async" && method === "POST") {
+    const body = await readBody(request)
+    const text = (Array.isArray(body.parts) ? body.parts : [])
+      .filter((part) => part?.type === "text" && typeof part.text === "string")
+      .map((part) => part.text)
+      .join("\n")
+    if (!body.parts || !text) {
+      sendError(response, 400, "VALIDATION_ERROR", "parts with a text entry are required")
+      return true
+    }
+    const model = body.model?.providerID && body.model?.modelID
+      ? `${body.model.providerID}/${body.model.modelID}`
+      : defaultModel
+    registry.setStatus(sessionID, "busy")
+    eventBus.emit({ type: "session.status", properties: { sessionID, status: { type: "busy" } } })
+    try {
+      await engine.prompt(sessionID, { text, model })
+    } finally {
+      // Order matters: the engine's final message must already be readable when idle is signaled.
+      registry.setStatus(sessionID, "idle")
+      eventBus.emit({ type: "session.status", properties: { sessionID, status: { type: "idle" } } })
+      eventBus.emit({ type: "session.idle", properties: { sessionID } })
+    }
+    response.writeHead(204)
+    response.end()
+    return true
+  }
+
+  if ((action === "abort" || action === "stop") && method === "POST") {
+    await engine.abort(sessionID)
+    registry.setStatus(sessionID, "idle")
+    eventBus.emit({ type: "session.status", properties: { sessionID, status: { type: "idle" } } })
+    writeJSON(response, 200, { ok: true })
+    return true
+  }
+
   return false
 }
