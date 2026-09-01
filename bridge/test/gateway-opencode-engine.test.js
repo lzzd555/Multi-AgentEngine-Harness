@@ -1,63 +1,15 @@
 // bridge/test/gateway-opencode-engine.test.js
 import { test } from "node:test"
 import assert from "node:assert/strict"
-import { createServer } from "node:http"
 import { createOpenCodeEngine } from "../src/gateway/engines/opencode-engine.js"
-
-// A fake upstream that mimics the opencode server API the engine proxies.
-function fakeUpstream() {
-  const state = { sessions: new Map(), busy: new Set(), messages: new Map(), promptResolvers: [] }
-  const server = createServer((request, response) => {
-    const url = new URL(request.url, "http://upstream")
-    const send = (body, status = 200) => {
-      response.writeHead(status, { "Content-Type": "application/json" })
-      response.end(body === undefined ? "" : JSON.stringify(body))
-    }
-    if (request.method === "GET" && url.pathname === "/session/status") {
-      return send(Object.fromEntries([...state.sessions.keys()].map((id) => [id, { type: state.busy.has(id) ? "busy" : "idle" }])))
-    }
-    if (request.method === "POST" && url.pathname === "/session") {
-      const id = `ses_${state.sessions.size + 1}`
-      state.sessions.set(id, { id, title: "t" })
-      state.messages.set(id, [])
-      return send({ id, title: "t", created_at: "2026-09-01T10:00:00Z", status: "idle" })
-    }
-    const promptMatch = url.pathname.match(/^\/session\/([^/]+)\/prompt_async$/)
-    if (request.method === "POST" && promptMatch) {
-      state.busy.add(promptMatch[1])
-      state.messages.get(promptMatch[1])?.push({
-        id: `msg_${state.messages.get(promptMatch[1]).length + 1}`,
-        role: "assistant", content: "done",
-        created_at: "2026-09-01T10:00:01Z",
-        info: { role: "assistant", finish: "stop" },
-        parts: [{ type: "text", content: "done" }, { type: "step-finish" }]
-      })
-      state.promptResolvers.push(() => state.busy.delete(promptMatch[1]))
-      return send(undefined, 204)
-    }
-    const messageMatch = url.pathname.match(/^\/session\/([^/]+)\/message$/)
-    if (request.method === "GET" && messageMatch) return send(state.messages.get(messageMatch[1]) ?? [])
-    const abortMatch = url.pathname.match(/^\/session\/([^/]+)\/abort$/)
-    if (request.method === "POST" && abortMatch) { state.busy.delete(abortMatch[1]); return send({ ok: true }) }
-    if (request.method === "DELETE" && url.pathname.startsWith("/session/")) {
-      state.sessions.delete(url.pathname.split("/")[2])
-      return send({ ok: true })
-    }
-    if (request.method === "GET" && url.pathname === "/question") return send([])
-    if (request.method === "GET" && url.pathname === "/permission") return send([])
-    send({}, 404)
-  })
-  return { server, state }
-}
+import { createFakeOpencodeUpstream } from "./helpers/fake-opencode-upstream.js"
 
 async function withFakeUpstream(run) {
-  const upstream = fakeUpstream()
-  await new Promise((resolve) => upstream.server.listen(0, "127.0.0.1", resolve))
-  const port = upstream.server.address().port
+  const upstream = await createFakeOpencodeUpstream()
   try {
-    return await run(upstream, port)
+    return await run(upstream, upstream.port)
   } finally {
-    upstream.server.close()
+    await upstream.close()
   }
 }
 
