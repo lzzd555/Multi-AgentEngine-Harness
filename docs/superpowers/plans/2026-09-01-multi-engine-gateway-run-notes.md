@@ -1,0 +1,119 @@
+# 多引擎网关演练执行笔记（Task 17 / M4 证据）
+
+> 记录 `bridge/scripts/gateway-rehearsal.mjs` 演练脚本的执行情况：本机（macOS 开发机）实测了什么、
+> 哪些步骤必须在装有引擎的机器 / Windows 实机上补测，以及 GLM 模板的实测验证步骤。
+> 演练脚本用法：`node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217 --query "..."`
+> （对**已启动**的网关跑完整评测链路，打印 ✓/✗ checklist，退出码 0=全绿 / 1=有红）。
+
+## 1. 本机环境（实测前提，未造假）
+
+- macOS（darwin 25.5.0 arm64），Node v24.14.0（`globalThis.EventSource` 为 undefined，演练脚本用 fetch 实现的 SSE 读取器替代 EventSource）。
+- `command -v opencode omp pi` 均为空：**本机没有安装任何真实引擎**，因此以下实测全部走"真实网关 + 伪造上游"路径，未伪造任何"真实引擎已跑通"的结论。
+- 无 Windows 实机；Windows 冒烟（第 3 节）待补。
+
+## 2. 本机已实测：真实网关 + 伪造 opencode 上游（全链路 ✓）
+
+与 Task 10 冒烟同法：网关 `main.js` 由 Node 真实拉起，`ManagedOpenCodeHost` 真实 spawn 上游进程并等
+`/global/health` 就绪——只是"上游"是一个伪造的 `opencode`（实现 `/global/health`、`POST /session`、
+`/session/status`、`POST /session/{id}/prompt_async`（204 + 广播 `message.part.updated` SSE）、
+`GET /session/{id}/message`、abort/stop、DELETE、`/question`、`/permission`、SSE `/event`）。
+演练流量穿过**真实网关 HTTP 面**（14 端点 + SSE），只有上游应答是假的。
+
+伪造上游脚本（dev 用，不在仓库内）：`/tmp/fake-opencode-rehearsal.mjs`。
+
+```bash
+OPENCODE_COMMAND=/tmp/fake-opencode-rehearsal.mjs GATEWAY_OPENCODE_PORT=14517 \
+  node bridge/src/gateway/main.js --engine opencode --port 6217 &
+# stderr: gateway listening on http://localhost:6217 engine=opencode
+
+node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217 \
+  --query "请输出 hello world 并结束，不要执行任何其他操作"
+```
+
+Checklist 输出（连续 4 次运行均一致，退出码 0）：
+
+```
+✓ health
+✓ create session
+✓ prompt returns 204 (http 204)
+✓ final message is assistant
+✓ finish=stop
+✓ step-finish present
+✓ server.connected
+✓ session.status
+✓ session.idle
+✓ permission endpoint
+
+10/10 checks passed in 0.4s
+```
+
+失败路径（指向无服务端口）：10 行全 ✗、`0/10 checks passed`、退出码 **1**、无崩溃栈。会话清理经
+`GET /session/status` 验证：4 轮演练后网关会话表为空 `{}`（DELETE 生效）；网关 SIGTERM 关闭后无残留
+进程（网关与伪造上游均退出，6217/14517 端口释放）。
+
+配套回归：`npm --prefix bridge test` → **526 pass / 0 fail**；`node bridge/scripts/package-solution.mjs`
+→ solution.zip 重建（38 条目，与 Task 16 基线一致）。
+
+## 3. 待补：装有引擎的机器上的真实演练（计划书 Task 17 Step 2）
+
+本机无 opencode/omp/pi，以下命令在引擎安装机执行（每引擎一轮，未安装的跳过并在此记录）：
+
+```bash
+node bridge/src/gateway/main.js --engine opencode --port 6217 &
+node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217
+kill %1
+# --engine omp / --engine pi 同理（换端口或先后执行）
+```
+
+预期：全部 ✓。若 OpenCode 真实上游的 `/event` 不发 `message.part.updated`（伪造假设与真实有出入），
+修 opencode-engine 的事件来源（改为轮询 `/session/{id}/message` diff 出 part 更新）而不是放宽 rehearsal
+检查；修正后补进 `gateway-opencode-engine.test.js` 的 fake 上游行为。
+PI 若 `npx pi-acp` 拉起失败：记录现象，按风险预案在 `engine-adapter.js` 加 claude/codex case 顶替
+（harness-profiles 已有对应 profile）。
+
+**各引擎实测结果（待填）：**
+
+| 引擎 | 机器/日期 | 结果 |
+| --- | --- | --- |
+| opencode（真实上游） | 待补 | 待补 |
+| omp | 待补 | 待补 |
+| pi | 待补 | 待补 |
+
+## 4. 待补：Windows 实机冒烟（计划书 Task 17 Step 3）
+
+1. Windows 机器 clone 仓库，或解压 solution.zip 到 `solution\`。
+2. `npm install -g opencode`（及按需 omp；pi 无需安装，适配器经 `npx --package=@automatalabs/pi-acp pi-acp` 拉起）。
+3. `gateway.cmd --engine opencode --port 6217`，另开终端：`node bridge\scripts\gateway-rehearsal.mjs --url http://localhost:6217`。
+4. `--engine omp` 重复；PI 失败按第 3 节风险预案处理。
+5. 结果回填本文件（每引擎 ✓/✗ 与现象）。
+
+注意：演练脚本**不在 solution.zip 内**（见第 6 节），Windows 侧若只用 zip 包，需从仓库拷贝
+`bridge/scripts/gateway-rehearsal.mjs`（纯 Node 内置模块单文件，直接 `node` 运行即可）。
+
+**Windows 实测结果（待填）：** 待补。
+
+## 5. 待补：GLM 模板实测验证（Task 15 README 的收尾步骤）
+
+在装有真实引擎的机器上验证 `zai/glm-5.2` 出现在各引擎模型目录（详见
+`solution/config-templates/README.md` 第 5 点）：
+
+```bash
+export ZAI_API_KEY=<key>   # Windows: setx ZAI_API_KEY <key> 后新开终端
+opencode models | grep -i "zai\|glm"    # 期望出现 zai/glm-5.2
+# omp / pi 按各自模型目录命令核验（omp --help / pi --help 查模型列表命令）
+node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217 \
+  --query "请输出 hello world 并结束，不要执行任何其他操作"   # 默认模型即 zai/glm-5.2，走通即模板生效
+```
+
+若某引擎配置键名有出入：修正 `solution/config-templates/` 模板并回填 README（`opencode.glm.json` 中
+`${ZAI_BASE_URL}` 的"网关替换 vs 引擎原生展开"问题以 `opencode models` 实测为准）。
+
+**实测结果（待填）：** 待补。
+
+## 6. 演练脚本与 solution.zip 的关系（预期行为，非缺陷）
+
+`package-solution.mjs` 从 `bridge/src/gateway/main.js` 做相对导入闭包打包；演练脚本位于
+`bridge/scripts/`（打包器不扫描该目录），因此 **solution.zip 不含 gateway-rehearsal.mjs**。这是有意的：
+rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖。评测侧只依赖 zip 内的
+`solution/gateway(.cmd)` → `code/bridge/src/gateway/main.js` 闭包（38 条目，已核对无 rehearsal 条目，
+与 Task 16 的 ENGINES-DEPS.md 基线一致）。本笔记即 M4 交付证据：网关本体 + 全链路自检已在本机验证。
