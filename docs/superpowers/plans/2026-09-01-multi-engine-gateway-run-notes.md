@@ -131,3 +131,12 @@ rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖
 - 修复（727c96e）：真实 opencode 消息信封为 {info,parts} 而非规范扁平形状，normalize-opencode 现两者兼容（含 step-finish 补发与 tool 结果合成）；单元测试以实测数据为夹具
 - 模型：GLM 内部部署端点未配置前，用 opencode 免费匿名模型（`GATEWAY_DEFAULT_MODEL=opencode/mimo-v2.5-free`）打通全链路；注意免费档有分钟级限流（偶发 0.2s 即 idle 且无消息，重试即可），正式评测换 GLM 端点后不受影响
 - 待办不变：GLM 内部端点配置、OMP/PI 实测、Windows 实机
+
+## 2026-09-02 真实 pi 实测（macOS，@automatalabs/pi-acp 0.5.0）
+
+- 安装：无需单独安装，npx 冷启动 20s（ACP start 超时 90s 内）✓
+- L2 网关：`AGENT_ENGINE=pi` 就绪 ✓；ACP initialize/authenticate 握手、session/new、configOptions 探测全部正常 ✓
+- 模型目录：pi 无 provider 配置时通告空目录；网关默认模型 zai/glm-5.2 触发 bridge 模型校验，返回干净 500 "Harness model is not available: zai/glm-5.2"（非挂起/崩溃）✓
+- 全 LLM 轮次：待 GLM 内部端点配置后按 config-templates/README §3 给 pi 配 OpenAI 兼容 provider，重跑 rehearsal
+- 改进建议（未实施）：模型不可用错误当前映射 500 INTERNAL_ERROR，建议映射 400 VALIDATION_ERROR（judge 视角是请求参数问题而非网关故障）
+- 引擎切换验证：opencode→pi 连续两轮 AGENT_ENGINE 切换启动均正常（调测指南第三步的部分验证）
