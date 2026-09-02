@@ -65,3 +65,30 @@ test("question and permission reads tolerate upstream 404 text bodies", async ()
     await engine.dispose()
   })
 })
+
+test("delayed busy marking does not make prompt resolve before the turn ends", async () => {
+  const { createFakeOpencodeUpstream } = await import("./helpers/fake-opencode-upstream.js")
+  const upstream = await createFakeOpencodeUpstream({ delayedBusyMs: 40 })
+  try {
+    const engine = createOpenCodeEngine({ manageHost: false, upstreamPort: upstream.port, pollIntervalMs: 5, promptTimeoutMs: 6_000 })
+    await engine.initialize()
+    const { id } = await engine.createSession({ title: "t" })
+    let done = false
+    const promptPromise = engine.prompt(id, { text: "hi" }).then(() => { done = true })
+    // Phase 1: before the upstream marks busy (40ms), the old code resolved here — the regression.
+    await new Promise((resolve) => setTimeout(resolve, 20))
+    assert.equal(done, false, "prompt still pending during the not-yet-busy window")
+    // Phase 2: busy is marked at 40ms and observed by the poller; releasing then must resolve.
+    await new Promise((resolve) => setTimeout(resolve, 60))
+    assert.equal(done, false, "prompt still pending while the turn holds busy")
+    assert.equal(upstream.state.busy.has(id), true, "upstream is busy before release")
+    upstream.state.promptResolvers.pop()() // release the turn
+    await promptPromise
+    assert.equal(done, true)
+    const messages = await engine.listMessages(id)
+    assert.equal(messages.length, 1, "message recorded once the turn actually ran")
+    await engine.dispose()
+  } finally {
+    await upstream.close()
+  }
+})

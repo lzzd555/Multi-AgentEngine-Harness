@@ -83,9 +83,17 @@ export function createOpenCodeEngine({
 
   async function waitUntilIdle(sessionID) {
     const deadline = Date.now() + promptTimeoutMs
+    // A freshly submitted turn is not marked busy instantly; polling before that moment must not
+    // read as "turn over" (and a turn can even finish between two polls). Wait until busy was
+    // observed at least once, or until the startup grace elapses — the grace must stay well below
+    // the deadline so a never-busy turn still resolves instead of timing out.
+    const startupGraceMs = Math.min(2_000, Math.floor(promptTimeoutMs / 2))
+    const submittedAt = Date.now()
+    let sawBusy = false
     while (Date.now() < deadline) {
       const statuses = await requestJSON("/session/status")
-      if (statuses?.[sessionID]?.type !== "busy") return
+      if (statuses?.[sessionID]?.type === "busy") sawBusy = true
+      else if (sawBusy || Date.now() - submittedAt >= startupGraceMs) return
       await sleepImpl(pollIntervalMs)
     }
     throw engineUnavailable(`OpenCode prompt timed out after ${promptTimeoutMs}ms`)

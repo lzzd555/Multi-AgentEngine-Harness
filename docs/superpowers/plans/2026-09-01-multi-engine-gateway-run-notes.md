@@ -157,3 +157,11 @@ rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖
 - rehearsal **10/10**（12.5s，GLM5.2 真实回复，一次通过）
 - config-templates/README §2/§3/§4 已回填为实测配置与端点匹配结论（Coding key 只认 coding 端点）
 - 状态：OpenCode ✓ / OMP ✓ / PI ✓ 全部 10/10；剩 Windows 实机、评测全量用例
+
+## 2026-09-02 重大修正：opencode 轮次失败真因是网关竞态，非限流
+
+- 现象：opengine rehearsal 随机 7/10（0.2s 即回）与 10/10 交替；曾误诊为"免费模型限流"——排除：固定等待的探针总能拿到完整回复，轮次真实完成了
+- 根因：opencode-engine 的 waitUntilIdle 把"turn 尚未进入 busy"误读为"已完成"（promptAndWait 有 started 守卫，轮询版没有）
+- 修复：waitUntilIdle 增加 sawBusy 守卫 + 启动宽限 min(2000, timeout/2)ms；fake 上游新增 delayedBusyMs 复现竞态；回归测试固化
+- 副产物：~/.config/opencode/opencode.json 的 zai provider（coding 端点 + {env:ZAI_API_KEY}）此前因竞态未获公平验证，修复后可正常使用（opencode models 已列出 zai/glm-5.2）；模板 api:{apiKey} 字段形状错误已修正为 options.apiKey
+- 测试：534/534

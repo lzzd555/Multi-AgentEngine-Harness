@@ -11,7 +11,7 @@
 // an armed resolver from `state.promptResolvers`.
 import { createServer } from "node:http"
 
-export async function createFakeOpencodeUpstream({ streamEvents = false } = {}) {
+export async function createFakeOpencodeUpstream({ streamEvents = false, delayedBusyMs = 0 } = {}) {
   const state = {
     sessions: new Map(),
     busy: new Set(),
@@ -59,7 +59,11 @@ export async function createFakeOpencodeUpstream({ streamEvents = false } = {}) 
     }
     const promptMatch = url.pathname.match(/^\/session\/([^/]+)\/prompt_async$/)
     if (request.method === "POST" && promptMatch) {
-      state.busy.add(promptMatch[1])
+      // delayedBusyMs reproduces the real upstream's race: the session is not marked busy the
+      // instant the prompt is accepted, so a naive poller can read "idle" before the turn starts.
+      const markBusy = () => state.busy.add(promptMatch[1])
+      if (delayedBusyMs > 0) setTimeout(markBusy, delayedBusyMs)
+      else markBusy()
       const message = {
         id: `msg_${(state.messages.get(promptMatch[1]) ?? []).length + 1}`,
         role: "assistant", content: "done",
