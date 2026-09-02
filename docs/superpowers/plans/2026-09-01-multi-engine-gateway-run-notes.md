@@ -140,3 +140,12 @@ rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖
 - 全 LLM 轮次：待 GLM 内部端点配置后按 config-templates/README §3 给 pi 配 OpenAI 兼容 provider，重跑 rehearsal
 - 改进建议（未实施）：模型不可用错误当前映射 500 INTERNAL_ERROR，建议映射 400 VALIDATION_ERROR（judge 视角是请求参数问题而非网关故障）
 - 引擎切换验证：opencode→pi 连续两轮 AGENT_ENGINE 切换启动均正常（调测指南第三步的部分验证）
+
+## 2026-09-02 pi + GLM5.2 全链路打通（Coding 订阅端点）
+
+- 配置（实测可用）：~/.pi/agent/models.json 定义 provider `zaicoding`（baseUrl https://api.z.ai/api/coding/paas/v4、api openai-completions、apiKey "$ZAI_API_KEY"、模型 glm-5.2）；网关以 GATEWAY_DEFAULT_MODEL=zaicoding/glm-5.2 启动
+- rehearsal **10/10**（5.1s，真实 GLM 回复，完成判定全过）
+- 坑1：GLM Coding 订阅的 key 只在 coding 端点有效（标准 paas/v4 端点 429）
+- 坑2：Coding 订阅有瞬时限流，连续快速调用会失败，pi 侧统一报 "Internal error: provider error"（经网关为 500 INTERNAL_ERROR）——等待/重试即恢复，非网关问题
+- 坑3：provider 命名避开 pi 内置的 `zai`（内置模型 glm-4.7/5-turbo/5.3 等并存），用独立名确保走自定义 baseUrl
+- 状态：opencode ✓ 10/10、pi ✓ 10/10；剩 OMP 实测、Windows 实机、三引擎全量用例
