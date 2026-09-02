@@ -15,7 +15,7 @@ function parsePort(value) {
 
 export function parseGatewayOptions(args, environment = process.env) {
   const options = {
-    engine: environment.ENGINE ?? environment.HARNESS_REMOTE_BACKEND ?? "opencode",
+    engine: environment.AGENT_ENGINE ?? environment.ENGINE ?? environment.HARNESS_REMOTE_BACKEND ?? "opencode",
     host: environment.GATEWAY_HOST ?? "localhost",
     port: parsePort(environment.GATEWAY_PORT ?? "6217"),
     defaultModel: environment.GATEWAY_DEFAULT_MODEL ?? "zai/glm-5.2"
@@ -53,7 +53,7 @@ export function gatewayUsage() {
     "Usage: harness-gateway [options]",
     "",
     "Options:",
-    "  --engine <name>   Agent engine: opencode, omp, pi (env ENGINE; default opencode)",
+    "  --engine <name>   Agent engine: opencode, omp, pi (env AGENT_ENGINE; default opencode)",
     "  --host <host>     Bind host (default localhost)",
     "  --port <port>     Bind port (default 6217)",
     "  --model <id>      Default model wire name (default zai/glm-5.2)"

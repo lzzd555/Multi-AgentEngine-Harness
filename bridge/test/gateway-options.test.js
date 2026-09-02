@@ -27,6 +27,15 @@ test("HARNESS_REMOTE_BACKEND is honored as a fallback", () => {
   assert.equal(parseGatewayOptions([], { HARNESS_REMOTE_BACKEND: "pi" }).engine, "pi")
 })
 
+test("AGENT_ENGINE from the debug guide wins over other engine env vars", () => {
+  assert.equal(parseGatewayOptions([], { AGENT_ENGINE: "pi", ENGINE: "omp" }).engine, "pi")
+  assert.equal(parseGatewayOptions([], { AGENT_ENGINE: "omp" }).engine, "omp")
+})
+
+test("usage mentions AGENT_ENGINE", () => {
+  assert.match(gatewayUsage(), /AGENT_ENGINE/)
+})
+
 test("invalid port and unknown option are rejected", () => {
   assert.throws(() => parseGatewayOptions(["--port", "70000"], {}), /between 1 and 65535/)
   assert.throws(() => parseGatewayOptions(["--wat"], {}), /Unknown option/)
