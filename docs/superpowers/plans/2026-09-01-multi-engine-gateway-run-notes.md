@@ -121,3 +121,13 @@ node bridge/scripts/gateway-rehearsal.mjs --url http://localhost:6217 \
 rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖。评测侧只依赖 zip 内的
 `solution/gateway(.cmd)` → `code/bridge/src/gateway/main.js` 闭包（38 条目，已核对无 rehearsal 条目，
 与 Task 16 的 ENGINES-DEPS.md 基线一致）。本笔记即 M4 交付证据：网关本体 + 全链路自检已在本机验证。
+
+## 2026-09-02 真实 opencode 实测（macOS，opencode 1.18.26）
+
+- L0 安装：`npm install -g opencode-ai` → `opencode --version` 1.18.26 ✓
+- L1 serve：`opencode serve --port 14097` → `/global/health` `{"healthy":true}` ✓
+- L2 网关：`AGENT_ENGINE=opencode node bridge/src/gateway/main.js --port 6217` → 1s 就绪 ✓
+- L3 演练：rehearsal 10/10 ✓（真实 LLM 回复，finish=stop + step-finish 完成判定通过）
+- 修复（727c96e）：真实 opencode 消息信封为 {info,parts} 而非规范扁平形状，normalize-opencode 现两者兼容（含 step-finish 补发与 tool 结果合成）；单元测试以实测数据为夹具
+- 模型：GLM 内部部署端点未配置前，用 opencode 免费匿名模型（`GATEWAY_DEFAULT_MODEL=opencode/mimo-v2.5-free`）打通全链路；注意免费档有分钟级限流（偶发 0.2s 即 idle 且无消息，重试即可），正式评测换 GLM 端点后不受影响
+- 待办不变：GLM 内部端点配置、OMP/PI 实测、Windows 实机
