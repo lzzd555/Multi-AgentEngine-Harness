@@ -119,3 +119,40 @@ test("permissionDecision maps spec replies onto the offered options", () => {
     { optionId: "o3" }
   )
 })
+
+test("a trailing error after a terminal reply does not fail the prompt", async () => {
+  const acpStub = { on: () => {}, start: async () => {}, request: async () => ({}), notify: () => {}, close: () => {} }
+  const repliedTurn = [
+    { info: { id: "u1", role: "user", sessionID: "s1", time: { created: 1 } }, parts: [{ type: "text", text: "hi" }] },
+    { info: { id: "a1", role: "assistant", sessionID: "s1", time: { created: 2 } }, parts: [{ type: "text", text: "done" }] }
+  ]
+  const serviceStub = {
+    subscribe: () => () => {},
+    createSession: async () => ({ id: "s1" }),
+    deleteSession: async () => {},
+    status: () => ({ type: "idle" }),
+    messages: async () => repliedTurn,
+    abort: () => {},
+    promptAndWait: async () => { throw new Error("Internal error: provider error") }
+  }
+  const engine = createAcpEngine({ profileId: "omp", acp: acpStub, service: serviceStub })
+  await engine.prompt("s1", { text: "hi" }) // must resolve: reply exists despite the error
+})
+
+test("a turn that failed without any reply still rejects", async () => {
+  const acpStub = { on: () => {}, start: async () => {}, request: async () => ({}), notify: () => {}, close: () => {} }
+  const serviceStub = {
+    subscribe: () => () => {},
+    createSession: async () => ({ id: "s1" }),
+    deleteSession: async () => {},
+    status: () => ({ type: "idle" }),
+    messages: async () => [
+      { info: { id: "u1", role: "user", sessionID: "s1", time: { created: 1 } }, parts: [{ type: "text", text: "hi" }] },
+      { info: { id: "a1", role: "assistant", sessionID: "s1", time: { created: 2 } }, parts: [] }
+    ],
+    abort: () => {},
+    promptAndWait: async () => { throw new Error("Internal error: provider error") }
+  }
+  const engine = createAcpEngine({ profileId: "omp", acp: acpStub, service: serviceStub })
+  await assert.rejects(() => engine.prompt("s1", { text: "hi" }), /provider error/)
+})
