@@ -74,6 +74,20 @@ export function normalizeAcpMessages(messages, { busy = false } = {}) {
     if (info.role !== "assistant") return
 
     const parts = message.parts ?? []
+    // An assistant message that carries only a turn error produced no LLM output; presenting it
+    // as finish=stop + step-finish would fake the judge's completion signal for a failed turn.
+    if (info.error && !parts.some((part) => (part.type === "text" && part.text?.trim()) || part.type === "tool")) {
+      normalized.push({
+        id: info.id,
+        role: "assistant",
+        content: "",
+        created_at: createdAt,
+        info: { role: "assistant", finish: "error" },
+        parts: [],
+        ...(info.error?.message ? { error: info.error.message } : {})
+      })
+      return
+    }
     const isBusyTail = busy && index === lastAssistantIndex
     normalized.push({
       id: info.id,

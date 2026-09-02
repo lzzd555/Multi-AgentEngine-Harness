@@ -2,6 +2,7 @@
 import { test } from "node:test"
 import assert from "node:assert/strict"
 import { normalizeAcpMessages, acpStatusToSpec } from "../src/gateway/engines/normalize-acp.js"
+import { isValidNormalizedMessage } from "../src/gateway/message-normalizer.js"
 
 const CREATED = Date.UTC(2026, 8, 1, 10, 0, 0)
 
@@ -59,4 +60,23 @@ test("status mapping covers the ACP vocabulary", () => {
   assert.equal(acpStatusToSpec("error"), "error")
   assert.equal(acpStatusToSpec("incomplete"), "error")
   assert.equal(acpStatusToSpec(undefined), "running")
+})
+
+test("an error-only assistant message must not fake the completion signal", () => {
+  const normalized = normalizeAcpMessages([
+    { info: { id: "a_err", role: "assistant", sessionID: "s1", time: { created: CREATED }, error: { name: "HarnessTurnError", message: "Request timed out." } }, parts: [] }
+  ])
+  assert.equal(normalized.length, 1)
+  assert.equal(normalized[0].info.finish, "error")
+  assert.deepEqual(normalized[0].parts, [])
+  assert.equal(normalized[0].content, "")
+  assert.equal(isValidNormalizedMessage(normalized[0]), false)
+})
+
+test("an assistant message with real output keeps stop+step-finish even if it also errors", () => {
+  const normalized = normalizeAcpMessages([
+    { info: { id: "a_mix", role: "assistant", sessionID: "s1", time: { created: CREATED }, error: { name: "X", message: "trailing" } }, parts: [{ type: "text", text: "real reply" }] }
+  ])
+  assert.equal(normalized[0].info.finish, "stop")
+  assert.ok(normalized[0].parts.some((part) => part.type === "step-finish"))
 })

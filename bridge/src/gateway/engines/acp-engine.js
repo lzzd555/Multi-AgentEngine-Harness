@@ -160,13 +160,20 @@ export function createAcpEngine({
       try {
         await engineService.promptAndWait(sessionID, text ?? "", model)
       } catch (error) {
-        // A trailing error after the reply (e.g. a background title-generation call hitting a
-        // provider limit) surfaces as session.error and rejects promptAndWait — but the judge
-        // grades the turn's final assistant message. Only fail when no terminal reply exists.
-        const messages = await engineService.messages(sessionID, false).catch(() => [])
-        const lastAssistant = [...(messages ?? [])].reverse().find((message) => message?.info?.role === "assistant")
-        const hasReply = (lastAssistant?.parts ?? []).some((part) => part.type === "text" && part.text?.trim())
-        if (!hasReply) throw error
+        // A trailing error after the reply (e.g. a background call hitting a provider limit)
+        // surfaces as session.error and rejects promptAndWait — but the judge grades the turn's
+        // final assistant message. The transcript may still be flushing when the error event
+        // lands, so poll briefly for a text-bearing reply before failing the turn.
+        const replyAppears = async () => {
+          for (let attempt = 0; attempt < 15; attempt += 1) {
+            const messages = await engineService.messages(sessionID, false).catch(() => [])
+            const lastAssistant = [...(messages ?? [])].reverse().find((message) => message?.info?.role === "assistant")
+            if ((lastAssistant?.parts ?? []).some((part) => part.type === "text" && part.text?.trim())) return true
+            await new Promise((resolve) => setTimeout(resolve, 200))
+          }
+          return false
+        }
+        if (!(await replyAppears())) throw error
       }
     },
 

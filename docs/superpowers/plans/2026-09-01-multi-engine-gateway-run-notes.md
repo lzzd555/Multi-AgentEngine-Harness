@@ -165,3 +165,10 @@ rehearsal 是开发/交付前自检工具，不是被评测网关的运行依赖
 - 修复：waitUntilIdle 增加 sawBusy 守卫 + 启动宽限 min(2000, timeout/2)ms；fake 上游新增 delayedBusyMs 复现竞态；回归测试固化
 - 副产物：~/.config/opencode/opencode.json 的 zai provider（coding 端点 + {env:ZAI_API_KEY}）此前因竞态未获公平验证，修复后可正常使用（opencode models 已列出 zai/glm-5.2）；模板 api:{apiKey} 字段形状错误已修正为 options.apiKey
 - 测试：534/534
+
+## 2026-09-02（续）pi 超时真相与归一化假阳性修复
+
+- pi + zaicoding/glm-5.2 的 500 复盘：AcpService 直连复现——pi 适配器对该端点 "Request timed out"（重试 4 次全空，56s），prompt 500 是正确行为；属 pi-acp 0.5.0（内嵌旧 SDK）与 Coding 端点的兼容性问题（曾成功过一次 5.1s，间歇性），引擎侧已知问题
+- 连带发现并修复真 bug：normalize-acp 曾把"仅含错误、无任何输出"的 assistant 消息归一化为 finish=stop + step-finish（rehearsal 假阳性）——现在此类消息标 finish:"error"、空 parts、不伪造完成信号（规范 finish 枚举为"stop、tool-calls 等"，error 扩展合法且被自身校验器拒绝）
+- acp-engine.prompt 加固保留：尾随 session.error 若最终 assistant 已有文本输出则不判失败（transcript 落盘轮询 3s）
+- 测试：538/538
