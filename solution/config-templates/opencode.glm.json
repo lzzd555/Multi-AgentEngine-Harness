@@ -5,12 +5,14 @@
       "npm": "@ai-sdk/openai-compatible",
       "name": "Z.ai (GLM)",
       "options": {
-        "baseURL": "https://api.z.ai/api/paas/v4"
+        "baseURL": "https://api.z.ai/api/paas/v4",
+        "apiKey": "{env:ZAI_API_KEY}"
       },
       "models": {
-        "glm-5.2": { "name": "GLM 5.2" }
-      },
-      "api": { "apiKey": "{env:ZAI_API_KEY}" }
+        "glm-5.2": {
+          "name": "GLM 5.2"
+        }
+      }
     }
   }
 }
