@@ -8,18 +8,56 @@
 
 模板中 `baseURL` 已直接写为默认官方端点 `https://api.z.ai/api/paas/v4`：OpenCode 与网关都**不会**对该字段做环境变量展开，自定义端点只能手工改这一行（若导出了环境变量 `ZAI_BASE_URL`，取其值填入即可，`ZAI_BASE_URL` 仅是惯用的取值来源，不是自动替换）。`{env:ZAI_API_KEY}` 则是 OpenCode 自带的环境变量引用写法，由 OpenCode 运行时读取，保持原样即可。
 
-## 2. OMP
+## 2. OMP（已实测，omp 18.1.2）
 
-在 OMP 的 provider 配置中新增一个 OpenAI 兼容 provider，参数与 OpenCode 模板等价：`baseURL` 取环境变量 `ZAI_BASE_URL` 的值（缺省为 `https://api.z.ai/api/paas/v4`），`apiKey` 取 `ZAI_API_KEY` 的值，模型 ID 使用 `glm-5.2`，provider 名称使用 `zai`，这样 wire name `zai/glm-5.2` 就会出现在 OMP 的可选模型列表里。provider 配置通常位于 `~/.config/omp/` 目录下（Windows 对应 `%USERPROFILE%\.config\omp\`），但具体文件名与配置键名随 OMP 版本可能不同：请先运行 `omp --help` 查看当前版本声明的配置文件位置与格式，再按上述参数写入对应字段。
+配置文件为 `~/.omp/agent/models.yml`（YAML；Windows 对应 `%USERPROFILE%\.omp\agent\models.yml`）。新增 provider：
 
-## 3. PI
+```yaml
+providers:
+  zaicoding:
+    baseUrl: https://api.z.ai/api/coding/paas/v4
+    api: openai-completions
+    apiKey: ZAI_API_KEY
+    models:
+      - id: glm-5.2
+        name: GLM 5.2 (coding)
+```
 
-在 PI 的 models 配置中新增一个与上述同参数的 OpenAI 兼容 provider：`baseURL=$ZAI_BASE_URL`（缺省 `https://api.z.ai/api/paas/v4`）、`apiKey=$ZAI_API_KEY`、模型 ID `glm-5.2`、provider 名 `zai`。PI 的 models 配置位于用户目录 `~/.pi/` 或项目目录 `.pi/` 下；若你的 PI 版本配置位置或键名与此不同，请运行 `pi --help` 或查阅 PI 官方文档确认 models 配置的写入位置与字段名后，按上述参数填写。
+`apiKey: ZAI_API_KEY` 是环境变量名引用（OMP 运行时解析）。验证：`omp models` 应出现 `zaicoding (1) → glm-5.2`。注意两点：① OMP 内置了 `zai` provider 家族，自定义 provider 建议用独立名（如 `zaicoding`）确保走自定义 baseUrl；② omp 安装在 `~/.local/bin`（macOS/Linux 安装脚本），网关启动环境的 PATH 需包含该目录，否则 spawn `omp` 失败。
 
-## 4. 环境变量
+## 3. PI（已实测，@automatalabs/pi-acp 0.5.0）
 
-三处配置真正必需的环境变量只有 `ZAI_API_KEY`（API 密钥）；`ZAI_BASE_URL`（OpenAI 兼容端点，可选）只是自定义端点的惯用取值来源——若设置，需把各配置中的 `baseURL` 手工改为该值，默认端点 `https://api.z.ai/api/paas/v4` 已直接写入模板与配置说明，模板中不出现任何明文密钥。网关的默认模型通过环境变量 `GATEWAY_DEFAULT_MODEL=zai/glm-5.2` 设置；该值以 `providerID/modelID` 形式原样透传给所选引擎，因此各引擎配置中的 provider 名与模型 ID 必须分别是 `zai` 与 `glm-5.2`，才能与 wire name `zai/glm-5.2` 匹配。
+配置文件为 `~/.pi/agent/models.json`（JSON，注意与 OMP 的 YAML 不同）。新增 provider：
 
-## 5. 演练验证（Task 17）
+```json
+{
+  "providers": {
+    "zaicoding": {
+      "baseUrl": "https://api.z.ai/api/coding/paas/v4",
+      "api": "openai-completions",
+      "apiKey": "$ZAI_API_KEY",
+      "models": [
+        { "id": "glm-5.2", "name": "GLM 5.2 (coding)" }
+      ]
+    }
+  }
+}
+```
 
-Task 17 的实机演练会逐引擎验证模型目录中出现 `zai/glm-5.2`（例如对 OpenCode 运行 `opencode models` 检查）。若某个引擎的实际配置键名与本文模板有出入，会在演练步骤中修正模板并回填本 README，演练结论是这些模板的最终准绳。
+`"$ZAI_API_KEY"` 为环境变量引用。PI 也内置 `zai` provider 家族，同样建议用独立 provider 名。PI 本体无需安装（适配器内嵌 SDK）。
+
+## 4. 环境变量与端点
+
+三处配置真正必需的环境变量只有 `ZAI_API_KEY`（API 密钥）；网关默认模型通过 `GATEWAY_DEFAULT_MODEL` 设置并以 `providerID/modelID` 形式透传给所选引擎。
+
+**端点与密钥类型必须匹配**（实测结论）：
+
+- 智谱开放平台按量付费 key → `https://api.z.ai/api/paas/v4`
+- **GLM Coding 订阅 key → `https://api.z.ai/api/coding/paas/v4`**（订阅 key 在标准 paas 端点一律 429）；Coding 订阅有瞬时限流，连续快速调用可能失败，等待重试即恢复
+- 评测要求的内部部署端点 → 届时把 baseUrl 换为内部地址即可
+
+**provider 命名**：OMP/PI 内置了 `zai` provider 家族，为避免与内置配置合并/遮蔽，实测推荐自定义 provider 用独立名 `zaicoding`，并以 `GATEWAY_DEFAULT_MODEL=zaicoding/glm-5.2` 启动网关（OpenCode 模板保持 `zai/glm-5.2` 不受影响）。
+
+## 5. 演练验证
+
+2026-09-02 已在 macOS 完成三引擎实测（详见 `docs/superpowers/plans/2026-09-01-multi-engine-gateway-run-notes.md`）：OpenCode 1.18.26、OMP 18.1.2、PI（pi-acp 0.5.0）经网关接入 GLM5.2 后 rehearsal 均 **10/10** 通过，本文 §1-§4 的配置即实测所用。剩余：Windows 实机复验、评测全量用例。若在 Windows 上配置键名有出入，按实机修正并回填本 README。
